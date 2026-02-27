@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>MoneyMan - Hat Shop</title>
+  <link rel="stylesheet" href="hats.css">
+</head>
+<body>
+  <!-- Top bar: player info + navigation -->
+  <header id="top-bar">
+    <a href="/" class="back-link">Back to Game</a>
+    <div id="player-info">
+      <canvas id="current-hat-preview" width="40" height="50"></canvas>
+      <div id="player-details">
+        <span id="player-name">Player</span>
+        <span id="coin-balance">0 coins</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <h1>Hat Shop</h1>
+    <p class="subtitle">Collect coins by playing games. Spend them on hats!</p>
+
+    <div id="hat-grid"></div>
+  </main>
+
+  <!-- Status toast for feedback -->
+  <div id="toast" class="hidden"></div>
+
+  <script src="hat-renderer.js"></script>
+  <script src="hats.js"></script>
+</body>
+</html>

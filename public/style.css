@@ -1,0 +1,280 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #1a1a2e;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height — accounts for mobile browser chrome */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  /* Safe area insets for iPhone notch/home indicator */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+#game-container {
+  position: relative;
+}
+
+canvas {
+  display: block;
+  border-radius: 8px;
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.3);
+}
+
+/* --- HUD (visible during gameplay) --- */
+
+#hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#hud.hidden {
+  display: none;
+}
+
+#timer {
+  color: #ffd700;
+  font-size: 36px;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+  text-align: center;
+  flex: 1;
+}
+
+#scoreboard {
+  color: #fff;
+  font-size: 15px;
+  font-weight: bold;
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+  text-align: right;
+  line-height: 1.6;
+  min-width: 140px;
+}
+
+.score-entry {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* --- Screens (overlays) --- */
+
+.screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.85);
+  border-radius: 8px;
+  z-index: 20;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+.screen h1 {
+  color: #ffd700;
+  font-size: 56px;
+  margin-bottom: 16px;
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.screen p {
+  color: #ccc;
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+.screen .hint {
+  color: #999;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+/* --- Lobby player list --- */
+
+#lobby-players {
+  display: flex;
+  gap: 16px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.lobby-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.lobby-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+}
+
+.lobby-player span {
+  color: #fff;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+/* --- Countdown --- */
+
+#countdown-screen h1 {
+  font-size: 96px;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* --- Results --- */
+
+#results {
+  margin: 16px 0 24px;
+  text-align: center;
+}
+
+.result-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 24px;
+  margin: 4px 0;
+  font-size: 20px;
+  color: #fff;
+  font-weight: bold;
+}
+
+.result-row:first-child {
+  font-size: 26px;
+  color: #ffd700;
+}
+
+.result-rank {
+  width: 28px;
+  text-align: right;
+}
+
+.result-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.result-name {
+  min-width: 100px;
+  text-align: left;
+}
+
+.result-score {
+  min-width: 60px;
+  text-align: right;
+}
+
+/* --- Name input --- */
+
+#name-input {
+  width: 200px;
+  padding: 12px 16px;
+  font-size: 22px;
+  font-weight: bold;
+  text-align: center;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 215, 0, 0.4);
+  border-radius: 8px;
+  outline: none;
+  margin: 12px 0 16px;
+  letter-spacing: 1px;
+}
+
+#name-input:focus {
+  border-color: #ffd700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+}
+
+#name-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+#name-error {
+  color: #e74c3c;
+  font-size: 13px;
+  min-height: 18px;
+  margin-bottom: 8px;
+}
+
+/* --- Buttons --- */
+
+.screen button {
+  padding: 14px 48px;
+  font-size: 22px;
+  font-weight: bold;
+  color: #1a1a2e;
+  background: #ffd700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.screen button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+/* --- Hat shop link --- */
+
+.hat-shop-link {
+  color: #ffd700;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: bold;
+  margin-top: 16px;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.hat-shop-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>MoneyMan - Multiplayer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD: timer + scoreboard (visible during gameplay) -->
+    <div id="hud" class="hidden">
+      <div id="timer">60</div>
+      <div id="scoreboard"></div>
+    </div>
+
+    <!-- Name entry screen (shown before joining lobby) -->
+    <div id="name-screen" class="screen hidden">
+      <h1>MoneyMan</h1>
+      <p>Multiplayer Coin Collector</p>
+      <label for="name-input" class="hint">Choose your name (8 chars max)</label>
+      <input type="text" id="name-input" maxlength="8" placeholder="Player" autocomplete="off" spellcheck="false">
+      <button id="join-btn">Join Game</button>
+      <a href="/hats.html" class="hat-shop-link">Hat Shop</a>
+    </div>
+
+    <!-- Lobby screen -->
+    <div id="lobby-screen" class="screen hidden">
+      <h1>MoneyMan</h1>
+      <p>Multiplayer Coin Collector</p>
+      <div id="lobby-players"></div>
+      <p id="lobby-timer" class="hint"></p>
+      <p class="hint">Waiting for players... game starts when full or idle timer expires</p>
+    </div>
+
+    <!-- Countdown screen -->
+    <div id="countdown-screen" class="screen hidden">
+      <h1 id="countdown-number">5</h1>
+      <p>Get ready!</p>
+    </div>
+
+    <!-- Game over screen -->
+    <div id="gameover-screen" class="screen hidden">
+      <h1>Game Over!</h1>
+      <div id="results"></div>
+      <button id="play-again-btn">Play Again</button>
+    </div>
+
+    <!-- Waiting screen (shown to late joiners) -->
+    <div id="waiting-screen" class="screen hidden">
+      <h1>MoneyMan</h1>
+      <p id="waiting-message">Game in progress — you'll join the next round!</p>
+    </div>
+
+    <!-- Disconnected overlay -->
+    <div id="disconnected-screen" class="screen hidden">
+      <h1>Disconnected</h1>
+      <p>Reconnecting...</p>
+    </div>
+  </div>
+  <script src="hat-renderer.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
