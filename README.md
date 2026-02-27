@@ -1,20 +1,35 @@
-# MoneyMan
+# MoneyMan — Multiplayer
 
-A browser-based coin collection game. Run around with your money bag and catch falling coins before they hit the ground!
+Real-time multiplayer coin catcher game (up to 5 players). Server-authoritative via Cloudflare Workers + Durable Objects + WebSockets.
 
 ## How to Play
 
-- **Move left**: Arrow Left or `A`
-- **Move right**: Arrow Right or `D`
+- **Move left**: Arrow Left / `A` / tap left side of screen
+- **Move right**: Arrow Right / `D` / tap right side of screen
 - Catch falling coins to earn points (+10 each)
-- Don't let coins hit the ground — you lose a life for each miss
-- 3 lives total — game over when they're all gone
-- Difficulty increases over time: coins fall faster and spawn more frequently
+- Compete against other players in 60-second rounds
+- Highest score at the end wins!
 
-## Running Locally
+## Architecture
 
-Open `index.html` in any modern browser. No build tools or dependencies required.
+- **Cloudflare Worker** serves static files and routes `/ws` to a Durable Object
+- **Durable Object (`GameRoom`)** manages game state: lobby, countdown, gameplay, scoring
+- **State machine**: LOBBY → COUNTDOWN (5s) → PLAYING (60s) → GAME_OVER (5s) → LOBBY
+- Server ticks at 20/sec during play; clients handle input and rendering only
 
-## Deploying
+## Development
 
-This is a static site — deploy to GitHub Pages, Cloudflare Pages, or any static host.
+```bash
+npm install
+npm run dev
+```
+
+Open multiple browser tabs to `http://localhost:8787` to test multiplayer.
+
+## Deployment
+
+```bash
+npm run deploy
+```
+
+Deploys the Worker + Durable Object + static assets to Cloudflare.
