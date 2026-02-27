@@ -24,13 +24,15 @@ export default {
         return new Response('Expected WebSocket', { status: 426 });
       }
 
-      // Validate origin to prevent cross-site WebSocket hijacking
+      // Validate origin to prevent cross-site WebSocket hijacking.
+      // Origin header is required — non-browser clients (curl, scripts) are rejected.
       const origin = request.headers.get('Origin');
-      if (origin) {
-        const originHost = new URL(origin).host;
-        if (originHost !== url.host) {
-          return new Response('Forbidden', { status: 403 });
-        }
+      if (!origin) {
+        return new Response('Forbidden — Origin required', { status: 403 });
+      }
+      const originHost = new URL(origin).host;
+      if (originHost !== url.host) {
+        return new Response('Forbidden', { status: 403 });
       }
 
       // Single global game room — all players connect to the same DO instance.
