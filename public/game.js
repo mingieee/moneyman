@@ -77,6 +77,13 @@ let serverCoins = [];          // [{ id, x, y, rotation }]
 let serverTimeLeft = 60;
 let particles = [];
 
+// --- Client-side coin extrapolation ---
+// Server sends coin positions at ~20Hz. Client renders at 60fps.
+// Between server updates, extrapolate coin positions using velocity
+// estimated from the two most recent server snapshots.
+let coinPrevSnapshot = null;   // { time, coins[] }
+let coinCurrSnapshot = null;   // { time, coins[] }
+
 // --- Local prediction ---
 // We track our own X position locally for responsive input,
 // and send it to the server. The server position is authoritative.
@@ -235,6 +242,8 @@ function connect() {
     serverPlayers = [];
     serverCoins = [];
     particles = [];
+    coinPrevSnapshot = null;
+    coinCurrSnapshot = null;
     scheduleReconnect();
   };
 
@@ -285,6 +294,9 @@ function handleMessage(msg) {
       serverPlayers = msg.players;
       serverCoins = msg.coins;
       serverTimeLeft = msg.timeLeft;
+      // Track snapshots for client-side extrapolation
+      coinPrevSnapshot = coinCurrSnapshot;
+      coinCurrSnapshot = { time: performance.now(), coins: msg.coins };
       // Collected events are batched into gameState to reduce broadcasts
       if (msg.collected) {
         for (const c of msg.collected) {
@@ -447,6 +459,49 @@ function drawParticles() {
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// Coin interpolation — smooth motion between server updates
+//
+// Renders 60ms behind the server so we're always interpolating
+// between two known positions (no guessing/extrapolation).
+// This adds imperceptible latency to coin visuals but eliminates
+// the jitter caused by position snaps when new data arrives.
+// ============================================================
+const INTERP_DELAY_MS = 60;
+
+function getDisplayCoins() {
+  if (!coinCurrSnapshot) return [];
+  if (!coinPrevSnapshot) return coinCurrSnapshot.coins;
+
+  const snapshotDt = coinCurrSnapshot.time - coinPrevSnapshot.time;
+  if (snapshotDt <= 0) return coinCurrSnapshot.coins;
+
+  const renderTime = performance.now() - INTERP_DELAY_MS;
+  // t=0 → prev position, t=1 → curr position, t>1 → gentle extrapolation
+  const t = Math.max(0, Math.min((renderTime - coinPrevSnapshot.time) / snapshotDt, 1.5));
+
+  const prevMap = new Map();
+  for (const c of coinPrevSnapshot.coins) {
+    prevMap.set(c.id, c);
+  }
+
+  const result = [];
+  for (const curr of coinCurrSnapshot.coins) {
+    const prev = prevMap.get(curr.id);
+    if (prev) {
+      result.push({
+        id: curr.id,
+        x: prev.x + (curr.x - prev.x) * t,
+        y: prev.y + (curr.y - prev.y) * t,
+        rotation: prev.rotation + (curr.rotation - prev.rotation) * t,
+      });
+    } else {
+      result.push(curr);
+    }
+  }
+  return result;
 }
 
 // ============================================================
@@ -755,6 +810,13 @@ function gameLoop(timestamp) {
       lastSendTime = now;
     }
 
+    // Heartbeat: send position even when idle so the server has messages
+    // to drive physics at 20Hz (message-driven tick model).
+    if (now - lastSendTime >= SEND_INTERVAL_MS) {
+      send({ type: 'move', x: roundedX });
+      lastSendTime = now;
+    }
+
     // Bob animation
     if (localMoving) {
       localBobTimer += dt * 8;
@@ -770,8 +832,9 @@ function gameLoop(timestamp) {
   drawBackground();
 
   if (currentScreen === 'playing') {
-    // Draw coins
-    for (const coin of serverCoins) {
+    // Draw coins (extrapolated for smooth motion between server updates)
+    const displayCoins = getDisplayCoins();
+    for (const coin of displayCoins) {
       drawCoin(coin);
     }
 

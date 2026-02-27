@@ -4,8 +4,8 @@
 // State machine: LOBBY → COUNTDOWN → PLAYING → GAME_OVER → LOBBY
 //
 // Uses the WebSocket Hibernation API. State is persisted to
-// ctx.storage on transitions. During PLAYING the 50ms alarm
-// ticks keep the DO alive so we use in-memory state only.
+// ctx.storage on transitions. During PLAYING, player messages
+// drive physics (message-driven ticks) with a 1Hz fallback alarm.
 // Player data is attached to each WebSocket (survives hibernation).
 // ============================================================
 
@@ -23,8 +23,9 @@ const PLAYER_HEIGHT = 70;
 const COIN_RADIUS = 16;
 
 // --- Timing ---
-const TICK_RATE = 20;
-const TICK_INTERVAL_MS = 1000 / TICK_RATE;
+const BROADCAST_THROTTLE_MS = 50;  // Max 20Hz broadcast rate
+const FALLBACK_ALARM_MS = 1000;    // 1Hz fallback alarm during PLAYING
+const MAX_PHYSICS_DT = 0.2;        // Cap physics step at 200ms
 const GAME_DURATION = 60;
 const COUNTDOWN_SECONDS = 5;
 const GAME_OVER_DISPLAY_SECONDS = 5;
@@ -75,7 +76,9 @@ export class GameRoom {
     this.countdownSeconds = COUNTDOWN_SECONDS;
     this.coinSpawnAccumulator = 0;
     this.nextPlayerId = 1;
-    this.tickCount = 0;
+    this.lastPhysicsTime = 0;
+    this.lastBroadcastTime = 0;
+    this.pendingCollected = [];
     this.initialized = false;
   }
 
@@ -93,6 +96,7 @@ export class GameRoom {
       this.coins = gs.coins || [];
       this.nextCoinId = gs.nextCoinId || 1;
       this.coinSpawnAccumulator = gs.coinSpawnAccumulator || 0;
+      this.lastPhysicsTime = gs.lastPhysicsTime || Date.now();
     }
 
     // Rebuild player maps from live WebSocket attachments
@@ -126,7 +130,7 @@ export class GameRoom {
     // Re-schedule alarm if the DO was evicted mid-state.
     // Without this, a PLAYING game would freeze permanently after eviction.
     if (this.state === 'PLAYING' && this.players.size > 0) {
-      this.ctx.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+      this.ctx.storage.setAlarm(Date.now() + FALLBACK_ALARM_MS);
     } else if (this.state === 'COUNTDOWN') {
       this.ctx.storage.setAlarm(Date.now() + 1000);
     } else if (this.state === 'GAME_OVER') {
@@ -150,6 +154,7 @@ export class GameRoom {
       coins: this.coins,
       nextCoinId: this.nextCoinId,
       coinSpawnAccumulator: this.coinSpawnAccumulator,
+      lastPhysicsTime: this.lastPhysicsTime,
     });
     this._savePlayerAttachments();
   }
@@ -208,15 +213,40 @@ export class GameRoom {
     let data;
     try { data = JSON.parse(message); } catch { return; }
 
-    // Fast path for move messages during gameplay — no async, no attachment
-    // deserialization. Uses WebSocket tags (set at accept time) for playerId.
-    // This is critical: 4 players × 20Hz = 80 messages/sec on this path.
+    // Fast path for move messages during gameplay — each message drives
+    // a physics step (message-driven ticks). Uses WebSocket tags for playerId.
     if (data.type === 'move' && this.initialized && this.state === 'PLAYING') {
       const playerId = this._getPlayerId(ws);
       if (playerId && this.players.has(playerId)) {
         const x = Number(data.x);
         if (!isNaN(x)) {
+          // Update player position first (used in collision detection)
           this.players.get(playerId).x = Math.max(0, Math.min(CANVAS_WIDTH - PLAYER_WIDTH, x));
+
+          // Advance physics by elapsed time
+          const now = Date.now();
+          const dt = Math.min((now - this.lastPhysicsTime) / 1000, MAX_PHYSICS_DT);
+          const collected = this._advancePhysics(dt);
+          this.lastPhysicsTime = now;
+
+          if (collected.length > 0) {
+            this.pendingCollected.push(...collected);
+          }
+
+          // Check game-over
+          if (this.timeLeft <= 0) {
+            this.timeLeft = 0;
+            this._endGame();
+            this._persistState();
+            return;
+          }
+
+          // Throttled broadcast (max 20Hz)
+          if (now - this.lastBroadcastTime >= BROADCAST_THROTTLE_MS) {
+            this._broadcastGameState(this.pendingCollected);
+            this.pendingCollected = [];
+            this.lastBroadcastTime = now;
+          }
         }
       }
       return;
@@ -316,10 +346,38 @@ export class GameRoom {
         }
         break;
 
-      case 'PLAYING':
-        // Hot loop — NO storage reads/writes, pure in-memory
-        this._tick();
+      case 'PLAYING': {
+        // 1Hz fallback — keeps physics running when no player messages arrive
+        if (this.players.size === 0) {
+          this._returnToLobby();
+          await this._persistState();
+          break;
+        }
+
+        const now = Date.now();
+        const dt = Math.min((now - this.lastPhysicsTime) / 1000, MAX_PHYSICS_DT);
+        const collected = this._advancePhysics(dt);
+        this.lastPhysicsTime = now;
+
+        if (collected.length > 0) {
+          this.pendingCollected.push(...collected);
+        }
+
+        if (this.timeLeft <= 0) {
+          this.timeLeft = 0;
+          this._endGame();
+          await this._persistState();
+          break;
+        }
+
+        // Broadcast on every fallback tick
+        this._broadcastGameState(this.pendingCollected);
+        this.pendingCollected = [];
+        this.lastBroadcastTime = now;
+        this._savePlayerAttachments();
+        this.ctx.storage.setAlarm(Date.now() + FALLBACK_ALARM_MS);
         break;
+      }
 
       case 'GAME_OVER':
         this._returnToLobby();
@@ -395,6 +453,9 @@ export class GameRoom {
     this.coins = [];
     this.nextCoinId = 1;
     this.coinSpawnAccumulator = 0;
+    this.lastPhysicsTime = Date.now();
+    this.lastBroadcastTime = 0;
+    this.pendingCollected = [];
 
     let i = 0;
     for (const [, player] of this.players) {
@@ -403,36 +464,23 @@ export class GameRoom {
       i++;
     }
 
-    this.ctx.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+    // 1Hz fallback alarm — player messages drive physics at higher frequency
+    this.ctx.storage.setAlarm(Date.now() + FALLBACK_ALARM_MS);
   }
 
-  _tick() {
-    if (this.state !== 'PLAYING') return;
-
-    if (this.players.size === 0) {
-      this._returnToLobby();
-      this._persistState(); // async but fine — we're done
-      return;
-    }
-
-    const dt = 1 / TICK_RATE;
-
+  // Advance physics by dt seconds. Pure game logic — no broadcasting,
+  // no alarm scheduling. Called from both message handler and fallback alarm.
+  _advancePhysics(dt) {
     this.timeLeft -= dt;
-    if (this.timeLeft <= 0) {
-      this.timeLeft = 0;
-      this._endGame();
-      this._persistState();
-      return;
-    }
 
     // Spawn coins
     this.coinSpawnAccumulator += dt;
-    if (this.coinSpawnAccumulator >= COIN_SPAWN_INTERVAL) {
+    while (this.coinSpawnAccumulator >= COIN_SPAWN_INTERVAL) {
       this.coinSpawnAccumulator -= COIN_SPAWN_INTERVAL;
       this._spawnCoin();
     }
 
-    // Update coins + collision — collect events batched into gameState
+    // Move coins + collision detection
     const collected = [];
     for (let i = this.coins.length - 1; i >= 0; i--) {
       const coin = this.coins[i];
@@ -463,17 +511,7 @@ export class GameRoom {
       }
     }
 
-    this._broadcastGameState(collected);
-
-    // Save player attachments every 5 seconds (no storage I/O — just
-    // serializes to WebSocket attachments so the DO can recover from eviction)
-    this.tickCount++;
-    if (this.tickCount % 100 === 0) {
-      this._savePlayerAttachments();
-    }
-
-    // Schedule next tick
-    this.ctx.storage.setAlarm(Date.now() + TICK_INTERVAL_MS);
+    return collected;
   }
 
   _spawnCoin() {
@@ -513,7 +551,7 @@ export class GameRoom {
       p.coinsEarned = coinsEarned;
       p.isWinner = isWinner;
       if (p.userId) {
-        coinAwards.push({ userId: p.userId, coinsEarned, isWinner });
+        coinAwards.push({ userId: p.userId, coinsEarned, isWinner, name: p.name });
       }
     }
 

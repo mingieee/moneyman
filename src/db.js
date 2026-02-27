@@ -103,7 +103,7 @@ export async function equipHat(db, userId, hatId) {
 
   await db.prepare(
     `UPDATE users SET equipped_hat = ?, updated_at = datetime('now') WHERE user_id = ?`
-  ).bind(hatId, userId);
+  ).bind(hatId, userId).run();
 
   return getOrCreateUser(db, userId);
 }
@@ -112,19 +112,20 @@ export async function equipHat(db, userId, hatId) {
 // coinsByUser: [{ userId, coinsEarned, isWinner }]
 export async function awardCoins(db, coinsByUser) {
   const statements = [];
-  for (const { userId, coinsEarned, isWinner } of coinsByUser) {
+  for (const { userId, coinsEarned, isWinner, name } of coinsByUser) {
     if (!isValidUUID(userId)) continue;
 
     statements.push(
       db.prepare(
         `UPDATE users SET
+           display_name = COALESCE(?, display_name),
            coins_balance = coins_balance + ?,
            coins_total = coins_total + ?,
            wins = wins + ?,
            games_played = games_played + 1,
            updated_at = datetime('now')
          WHERE user_id = ?`
-      ).bind(coinsEarned, coinsEarned, isWinner ? 1 : 0, userId)
+      ).bind(name || null, coinsEarned, coinsEarned, isWinner ? 1 : 0, userId)
     );
   }
 
