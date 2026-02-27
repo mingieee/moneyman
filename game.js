@@ -79,56 +79,65 @@ document.addEventListener('keyup', (e) => {
 });
 
 // --- Touch Input ---
-// Touch left half of canvas = move left, right half = move right.
-// Supports multi-touch (e.g. touching both sides simultaneously).
+// Relative drag: touch anywhere on canvas to set origin, then slide
+// left/right from that point to move the character. A small dead zone
+// prevents accidental movement on initial tap.
 
 let touchLeft = false;
 let touchRight = false;
 
-function handleTouches(e) {
-  e.preventDefault(); // Prevent scrolling/zooming while playing
+// Track each finger's origin point by touch identifier
+const touchOrigins = new Map();
+const TOUCH_DEAD_ZONE = 10; // Pixels of movement before input registers
 
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    touchOrigins.set(t.identifier, { startX: t.clientX });
+  }
+  recalcTouchDirection(e.touches);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  recalcTouchDirection(e.touches);
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  // Remove lifted fingers
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    touchOrigins.delete(e.changedTouches[i].identifier);
+  }
+  recalcTouchDirection(e.touches);
+}, { passive: false });
+
+canvas.addEventListener('touchcancel', (e) => {
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    touchOrigins.delete(e.changedTouches[i].identifier);
+  }
+  recalcTouchDirection(e.touches);
+});
+
+function recalcTouchDirection(activeTouches) {
   touchLeft = false;
   touchRight = false;
 
-  // Get canvas position on screen (accounts for CSS scaling)
-  const rect = canvas.getBoundingClientRect();
-  const midX = rect.left + rect.width / 2;
+  for (let i = 0; i < activeTouches.length; i++) {
+    const t = activeTouches[i];
+    const origin = touchOrigins.get(t.identifier);
+    if (!origin) continue;
 
-  for (let i = 0; i < e.touches.length; i++) {
-    const tx = e.touches[i].clientX;
-    // Only count touches that are on/near the canvas
-    if (tx >= rect.left && tx <= rect.right) {
-      if (tx < midX) {
-        touchLeft = true;
-      } else {
-        touchRight = true;
-      }
+    const dx = t.clientX - origin.startX;
+
+    if (dx < -TOUCH_DEAD_ZONE) {
+      touchLeft = true;
+    } else if (dx > TOUCH_DEAD_ZONE) {
+      touchRight = true;
     }
   }
 }
-
-canvas.addEventListener('touchstart', handleTouches, { passive: false });
-canvas.addEventListener('touchmove', handleTouches, { passive: false });
-canvas.addEventListener('touchend', (e) => {
-  e.preventDefault();
-  // Re-evaluate remaining touches (finger lifted)
-  touchLeft = false;
-  touchRight = false;
-  const rect = canvas.getBoundingClientRect();
-  const midX = rect.left + rect.width / 2;
-  for (let i = 0; i < e.touches.length; i++) {
-    const tx = e.touches[i].clientX;
-    if (tx >= rect.left && tx <= rect.right) {
-      if (tx < midX) touchLeft = true;
-      else touchRight = true;
-    }
-  }
-}, { passive: false });
-canvas.addEventListener('touchcancel', () => {
-  touchLeft = false;
-  touchRight = false;
-});
 
 // --- UI Elements ---
 
@@ -569,37 +578,51 @@ function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
 }
 
-// --- Touch Zone Indicators ---
-// Show subtle arrow hints on touch devices so players know where to tap.
-// Only visible on devices that support touch.
+// --- Touch Indicators ---
+// Show a subtle drag hint on touch devices.
 
 const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
 function drawTouchIndicators() {
   if (!isTouchDevice) return;
 
-  const arrowSize = 30;
-  const yPos = GROUND_Y + 20; // In the ground area, out of the way
-  const alpha = 0.25;
+  const yPos = GROUND_Y + 20;
+  const arrowSize = 12;
 
-  // Left arrow — highlight when actively touching
-  ctx.globalAlpha = touchLeft ? 0.5 : alpha;
+  // Show left/right arrows with a line between them as a "drag" hint
+  const centerX = CANVAS_WIDTH / 2;
+  const spread = 40;
+  const alpha = (touchLeft || touchRight) ? 0.15 : 0.3;
+
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
   ctx.fillStyle = '#fff';
+
+  // Left arrow
+  ctx.globalAlpha = touchLeft ? 0.6 : alpha;
   ctx.beginPath();
-  ctx.moveTo(60, yPos);
-  ctx.lineTo(60 + arrowSize, yPos - arrowSize / 2);
-  ctx.lineTo(60 + arrowSize, yPos + arrowSize / 2);
+  ctx.moveTo(centerX - spread, yPos);
+  ctx.lineTo(centerX - spread + arrowSize, yPos - arrowSize / 2);
+  ctx.lineTo(centerX - spread + arrowSize, yPos + arrowSize / 2);
   ctx.closePath();
   ctx.fill();
 
   // Right arrow
-  ctx.globalAlpha = touchRight ? 0.5 : alpha;
+  ctx.globalAlpha = touchRight ? 0.6 : alpha;
   ctx.beginPath();
-  ctx.moveTo(CANVAS_WIDTH - 60, yPos);
-  ctx.lineTo(CANVAS_WIDTH - 60 - arrowSize, yPos - arrowSize / 2);
-  ctx.lineTo(CANVAS_WIDTH - 60 - arrowSize, yPos + arrowSize / 2);
+  ctx.moveTo(centerX + spread, yPos);
+  ctx.lineTo(centerX + spread - arrowSize, yPos - arrowSize / 2);
+  ctx.lineTo(centerX + spread - arrowSize, yPos + arrowSize / 2);
   ctx.closePath();
   ctx.fill();
+
+  // Connecting line
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.moveTo(centerX - spread + arrowSize + 4, yPos);
+  ctx.lineTo(centerX + spread - arrowSize - 4, yPos);
+  ctx.stroke();
 
   ctx.globalAlpha = 1;
 }
