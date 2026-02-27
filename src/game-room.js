@@ -60,13 +60,6 @@ function sanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 8);
 }
 
-// Escape a string for safe embedding in manually-built JSON.
-// Defense-in-depth: sanitizeName restricts to [a-zA-Z0-9 _-] which has no
-// dangerous chars, but this protects against future sanitization changes.
-function jsonEscape(str) {
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
 export class GameRoom {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -601,41 +594,43 @@ export class GameRoom {
     });
   }
 
-  // Build the gameState JSON string directly — avoids allocating intermediate
-  // arrays/objects that would create GC pressure at 20Hz with 5 players.
+  // Build gameState and broadcast to all joined players + waiters.
+  // Uses JSON.stringify for safety — eliminates injection risk from
+  // manual string concatenation. Perf is fine at 5 players / 50 coins.
   _broadcastGameState(collected) {
-    let json = '{"type":"gameState","players":[';
-    let first = true;
-    for (const [id, p] of this.players) {
-      if (!first) json += ',';
-      first = false;
-      json += '{"playerId":"' + id + '","x":' + Math.round(p.x) +
-              ',"score":' + p.score + ',"color":"' + p.color +
-              '","name":"' + jsonEscape(p.name) + '","hat":"' + (p.hat || 'cap') + '"}';
-    }
-    json += '],"coins":[';
-    first = true;
-    for (const c of this.coins) {
-      if (!first) json += ',';
-      first = false;
-      json += '{"id":' + c.id + ',"x":' + (Math.round(c.x * 10) / 10) +
-              ',"y":' + (Math.round(c.y * 10) / 10) +
-              ',"rotation":' + (Math.round(c.rotation * 100) / 100) + '}';
-    }
-    json += '],"timeLeft":' + (Math.round(this.timeLeft * 10) / 10);
-    if (collected && collected.length > 0) {
-      json += ',"collected":[';
-      first = true;
-      for (const c of collected) {
-        if (!first) json += ',';
-        first = false;
-        json += '{"playerId":"' + c.playerId + '","x":' + c.x + ',"y":' + c.y + '}';
-      }
-      json += ']';
-    }
-    json += '}';
+    const state = {
+      type: 'gameState',
+      players: [],
+      coins: [],
+      timeLeft: Math.round(this.timeLeft * 10) / 10,
+    };
 
-    // Send directly — skip _broadcastToJoined to avoid re-stringify
+    for (const [id, p] of this.players) {
+      state.players.push({
+        playerId: id,
+        x: Math.round(p.x),
+        score: p.score,
+        color: p.color,
+        name: p.name,
+        hat: p.hat || 'cap',
+      });
+    }
+
+    for (const c of this.coins) {
+      state.coins.push({
+        id: c.id,
+        x: Math.round(c.x * 10) / 10,
+        y: Math.round(c.y * 10) / 10,
+        rotation: Math.round(c.rotation * 100) / 100,
+      });
+    }
+
+    if (collected && collected.length > 0) {
+      state.collected = collected;
+    }
+
+    const json = JSON.stringify(state);
+
     for (const [id, p] of this.players) {
       try { p.ws.send(json); } catch { this.players.delete(id); }
     }

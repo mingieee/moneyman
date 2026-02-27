@@ -64,24 +64,24 @@ export async function buyHat(db, userId, hatId) {
     return { error: 'Not enough coins', status: 403 };
   }
 
-  // Atomic deduction: WHERE clause ensures balance can't go negative even under
-  // concurrent requests (prevents TOCTOU double-spend). The INSERT uses
-  // INSERT OR IGNORE to handle the race where two requests both pass the
-  // ownership check — the second INSERT silently no-ops.
-  const results = await db.batch([
-    db.prepare(
-      `UPDATE users SET coins_balance = coins_balance - ?, updated_at = datetime('now')
-       WHERE user_id = ? AND coins_balance >= ?`
-    ).bind(hat.cost, userId, hat.cost),
-    db.prepare(
-      'INSERT OR IGNORE INTO user_hats (user_id, hat_id) VALUES (?, ?)'
-    ).bind(userId, hatId),
-  ]);
+  // Deduct coins atomically: WHERE clause ensures balance can't go negative
+  // even under concurrent requests (prevents TOCTOU double-spend).
+  // Run UPDATE first, then only INSERT the hat if payment succeeded.
+  const updateResult = await db.prepare(
+    `UPDATE users SET coins_balance = coins_balance - ?, updated_at = datetime('now')
+     WHERE user_id = ? AND coins_balance >= ?`
+  ).bind(hat.cost, userId, hat.cost).run();
 
-  // Check if the UPDATE actually affected a row (balance was sufficient)
-  if (results[0].meta.changes === 0) {
+  // If the UPDATE matched 0 rows, the balance was insufficient
+  if (updateResult.meta.changes === 0) {
     return { error: 'Not enough coins', status: 403 };
   }
+
+  // Payment confirmed — grant the hat. INSERT OR IGNORE handles the rare
+  // race where two requests both passed the ownership check above.
+  await db.prepare(
+    'INSERT OR IGNORE INTO user_hats (user_id, hat_id) VALUES (?, ?)'
+  ).bind(userId, hatId).run();
 
   return getOrCreateUser(db, userId);
 }

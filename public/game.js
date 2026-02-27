@@ -62,7 +62,7 @@ async function loadProfile() {
       userProfile = data.user;
       equippedHat = data.user.equippedHat || 'cap';
     }
-  } catch { /* profile load failed — use defaults */ }
+  } catch (err) { console.error('Failed to load profile:', err); }
 }
 loadProfile();
 
