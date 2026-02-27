@@ -86,27 +86,50 @@ document.addEventListener('keyup', (e) => {
 let touchLeft = false;
 let touchRight = false;
 
-// Track each finger's origin point by touch identifier
+// Track each finger's origin and current direction by touch identifier.
+// When the finger reverses direction, the origin recenters so the new
+// direction registers instantly — no sluggish travel back through a dead zone.
 const touchOrigins = new Map();
-const TOUCH_DEAD_ZONE = 10; // Pixels of movement before input registers
+const TOUCH_DEAD_ZONE = 5; // Pixels before initial movement registers
 
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   for (let i = 0; i < e.changedTouches.length; i++) {
     const t = e.changedTouches[i];
-    touchOrigins.set(t.identifier, { startX: t.clientX });
+    touchOrigins.set(t.identifier, { originX: t.clientX, dir: 0 });
   }
   recalcTouchDirection(e.touches);
 }, { passive: false });
 
 canvas.addEventListener('touchmove', (e) => {
   e.preventDefault();
+  // Update origins on direction reversal before recalculating
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    const t = e.changedTouches[i];
+    const state = touchOrigins.get(t.identifier);
+    if (!state) continue;
+
+    const dx = t.clientX - state.originX;
+
+    if (state.dir === 1 && dx < 0) {
+      // Was going right, finger moved left of origin — recenter immediately
+      state.originX = t.clientX;
+      state.dir = -1;
+    } else if (state.dir === -1 && dx > 0) {
+      // Was going left, finger moved right of origin — recenter immediately
+      state.originX = t.clientX;
+      state.dir = 1;
+    } else if (state.dir === 0) {
+      // First movement — apply dead zone only on initial gesture
+      if (dx > TOUCH_DEAD_ZONE) state.dir = 1;
+      else if (dx < -TOUCH_DEAD_ZONE) state.dir = -1;
+    }
+  }
   recalcTouchDirection(e.touches);
 }, { passive: false });
 
 canvas.addEventListener('touchend', (e) => {
   e.preventDefault();
-  // Remove lifted fingers
   for (let i = 0; i < e.changedTouches.length; i++) {
     touchOrigins.delete(e.changedTouches[i].identifier);
   }
@@ -126,16 +149,11 @@ function recalcTouchDirection(activeTouches) {
 
   for (let i = 0; i < activeTouches.length; i++) {
     const t = activeTouches[i];
-    const origin = touchOrigins.get(t.identifier);
-    if (!origin) continue;
+    const state = touchOrigins.get(t.identifier);
+    if (!state) continue;
 
-    const dx = t.clientX - origin.startX;
-
-    if (dx < -TOUCH_DEAD_ZONE) {
-      touchLeft = true;
-    } else if (dx > TOUCH_DEAD_ZONE) {
-      touchRight = true;
-    }
+    if (state.dir === -1) touchLeft = true;
+    else if (state.dir === 1) touchRight = true;
   }
 }
 
