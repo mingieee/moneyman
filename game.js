@@ -49,8 +49,14 @@ function resizeCanvas() {
   const maxW = window.innerWidth;
   const maxH = window.innerHeight;
   const scale = Math.min(maxW / CANVAS_WIDTH, maxH / CANVAS_HEIGHT);
-  canvas.style.width = Math.floor(CANVAS_WIDTH * scale) + 'px';
-  canvas.style.height = Math.floor(CANVAS_HEIGHT * scale) + 'px';
+  const w = Math.floor(CANVAS_WIDTH * scale) + 'px';
+  const h = Math.floor(CANVAS_HEIGHT * scale) + 'px';
+  canvas.style.width = w;
+  canvas.style.height = h;
+  // Keep container in sync so overlays (score, screens) align with the canvas
+  const container = document.getElementById('game-container');
+  container.style.width = w;
+  container.style.height = h;
 }
 
 window.addEventListener('resize', resizeCanvas);
