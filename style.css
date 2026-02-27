@@ -12,12 +12,18 @@ body {
   min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   overflow: hidden;
+  /* Prevent pull-to-refresh and overscroll on mobile */
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 #game-container {
   position: relative;
   width: 800px;
   height: 600px;
+  /* Scale to fit viewport while preserving aspect ratio */
+  max-width: 100vw;
+  max-height: 100vh;
 }
 
 canvas {

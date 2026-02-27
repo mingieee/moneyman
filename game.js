@@ -41,6 +41,21 @@ const DIFFICULTY_RAMP = 0.04;     // Difficulty increase per second
 const GROUND_Y = CANVAS_HEIGHT - 40; // Where the ground line sits
 const MAX_LIVES = 3;
 
+// --- Responsive Canvas Scaling ---
+// The game logic always uses 800x600 internally.
+// On smaller screens (iPad, phone) we CSS-scale the canvas to fit.
+
+function resizeCanvas() {
+  const maxW = window.innerWidth;
+  const maxH = window.innerHeight;
+  const scale = Math.min(maxW / CANVAS_WIDTH, maxH / CANVAS_HEIGHT);
+  canvas.style.width = Math.floor(CANVAS_WIDTH * scale) + 'px';
+  canvas.style.height = Math.floor(CANVAS_HEIGHT * scale) + 'px';
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
 // --- Input Tracking ---
 
 const keys = {};
@@ -55,6 +70,58 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('keyup', (e) => {
   keys[e.key] = false;
+});
+
+// --- Touch Input ---
+// Touch left half of canvas = move left, right half = move right.
+// Supports multi-touch (e.g. touching both sides simultaneously).
+
+let touchLeft = false;
+let touchRight = false;
+
+function handleTouches(e) {
+  e.preventDefault(); // Prevent scrolling/zooming while playing
+
+  touchLeft = false;
+  touchRight = false;
+
+  // Get canvas position on screen (accounts for CSS scaling)
+  const rect = canvas.getBoundingClientRect();
+  const midX = rect.left + rect.width / 2;
+
+  for (let i = 0; i < e.touches.length; i++) {
+    const tx = e.touches[i].clientX;
+    // Only count touches that are on/near the canvas
+    if (tx >= rect.left && tx <= rect.right) {
+      if (tx < midX) {
+        touchLeft = true;
+      } else {
+        touchRight = true;
+      }
+    }
+  }
+}
+
+canvas.addEventListener('touchstart', handleTouches, { passive: false });
+canvas.addEventListener('touchmove', handleTouches, { passive: false });
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  // Re-evaluate remaining touches (finger lifted)
+  touchLeft = false;
+  touchRight = false;
+  const rect = canvas.getBoundingClientRect();
+  const midX = rect.left + rect.width / 2;
+  for (let i = 0; i < e.touches.length; i++) {
+    const tx = e.touches[i].clientX;
+    if (tx >= rect.left && tx <= rect.right) {
+      if (tx < midX) touchLeft = true;
+      else touchRight = true;
+    }
+  }
+}, { passive: false });
+canvas.addEventListener('touchcancel', () => {
+  touchLeft = false;
+  touchRight = false;
 });
 
 // --- UI Elements ---
@@ -86,8 +153,8 @@ function createPlayer() {
 }
 
 function updatePlayer(dt) {
-  const movingLeft = keys['ArrowLeft'] || keys['a'] || keys['A'];
-  const movingRight = keys['ArrowRight'] || keys['d'] || keys['D'];
+  const movingLeft = keys['ArrowLeft'] || keys['a'] || keys['A'] || touchLeft;
+  const movingRight = keys['ArrowRight'] || keys['d'] || keys['D'] || touchRight;
 
   player.moving = false;
 
@@ -491,8 +558,44 @@ function gameLoop(timestamp) {
 
   drawParticles();
   drawPlayer();
+  drawTouchIndicators();
 
   requestAnimationFrame(gameLoop);
+}
+
+// --- Touch Zone Indicators ---
+// Show subtle arrow hints on touch devices so players know where to tap.
+// Only visible on devices that support touch.
+
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+function drawTouchIndicators() {
+  if (!isTouchDevice) return;
+
+  const arrowSize = 30;
+  const yPos = GROUND_Y + 20; // In the ground area, out of the way
+  const alpha = 0.25;
+
+  // Left arrow — highlight when actively touching
+  ctx.globalAlpha = touchLeft ? 0.5 : alpha;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(60, yPos);
+  ctx.lineTo(60 + arrowSize, yPos - arrowSize / 2);
+  ctx.lineTo(60 + arrowSize, yPos + arrowSize / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Right arrow
+  ctx.globalAlpha = touchRight ? 0.5 : alpha;
+  ctx.beginPath();
+  ctx.moveTo(CANVAS_WIDTH - 60, yPos);
+  ctx.lineTo(CANVAS_WIDTH - 60 - arrowSize, yPos - arrowSize / 2);
+  ctx.lineTo(CANVAS_WIDTH - 60 - arrowSize, yPos + arrowSize / 2);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = 1;
 }
 
 // --- Initial Draw ---
