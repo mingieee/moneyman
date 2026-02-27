@@ -15,8 +15,8 @@ function esc(str) {
 }
 
 // --- Fixed game dimensions (same as server) ---
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
+const CANVAS_WIDTH = 960;
+const CANVAS_HEIGHT = 540;
 canvas.width = CANVAS_WIDTH;
 canvas.height = CANVAS_HEIGHT;
 const GROUND_Y = CANVAS_HEIGHT - 40;
@@ -43,6 +43,9 @@ const disconnectedScreen = document.getElementById('disconnected-screen');
 const nameScreen = document.getElementById('name-screen');
 const nameInput = document.getElementById('name-input');
 const joinBtn = document.getElementById('join-btn');
+const nameHatPreview = document.getElementById('name-hat-preview');
+const lobbyPlayerCount = document.getElementById('lobby-player-count');
+const gameoverTitle = document.getElementById('gameover-title');
 
 // --- Persistent identity (UUID in localStorage) ---
 let userId = localStorage.getItem('moneyman_userId');
@@ -64,7 +67,15 @@ async function loadProfile() {
     }
   } catch (err) { console.error('Failed to load profile:', err); }
 }
-loadProfile();
+
+// Render the equipped hat character preview on the name screen
+function renderNameHatPreview() {
+  const pvCtx = nameHatPreview.getContext('2d');
+  pvCtx.clearRect(0, 0, 80, 100);
+  drawHatPreview(pvCtx, equippedHat, 80, 100);
+}
+
+loadProfile().then(renderNameHatPreview);
 
 // --- Player name ---
 let playerName = '';
@@ -334,6 +345,9 @@ function showScreen(screen) {
   lobbyScreen.classList.toggle('hidden', screen !== 'lobby');
   countdownScreen.classList.toggle('hidden', screen !== 'countdown');
   gameoverScreen.classList.toggle('hidden', screen !== 'gameover');
+
+  // Re-render hat preview when returning to name screen (hat may have changed)
+  if (screen === 'name') renderNameHatPreview();
   waitingScreen.classList.toggle('hidden', screen !== 'waiting');
   disconnectedScreen.classList.toggle('hidden', screen !== 'disconnected');
   hud.classList.toggle('hidden', screen !== 'playing');
@@ -373,29 +387,68 @@ function stopLobbyCountdown() {
 function renderLobby(players, idleTimer) {
   lobbyPlayers.innerHTML = '';
   for (const p of players) {
-    const div = document.createElement('div');
-    div.className = 'lobby-player';
-    div.innerHTML = `
-      <div class="lobby-avatar" style="background: ${esc(p.color)}"></div>
-      <span>${esc(p.name)}${p.playerId === myPlayerId ? ' (you)' : ''}</span>
-    `;
-    lobbyPlayers.appendChild(div);
+    const card = document.createElement('div');
+    const isMe = p.playerId === myPlayerId;
+    card.className = 'lobby-card' + (isMe ? ' lobby-card-me' : '');
+
+    // Mini canvas character preview with hat
+    const cvs = document.createElement('canvas');
+    cvs.width = 80;
+    cvs.height = 100;
+    cvs.className = 'lobby-preview';
+    const pvCtx = cvs.getContext('2d');
+    drawHatPreview(pvCtx, p.hat || 'cap', 80, 100);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'lobby-card-name';
+    nameSpan.textContent = p.name + (isMe ? ' (you)' : '');
+
+    card.appendChild(cvs);
+    card.appendChild(nameSpan);
+    lobbyPlayers.appendChild(card);
   }
+  // Player count
+  lobbyPlayerCount.textContent = players.length + '/5 players';
   startLobbyCountdown(idleTimer);
 }
 
 function renderResults(players) {
+  // Dynamic title: "You Win!" if local player is #1 with score > 0
+  const isWinner = players.length > 0
+    && players[0].playerId === myPlayerId
+    && players[0].score > 0;
+  gameoverTitle.textContent = isWinner ? 'You Win!' : 'Game Over!';
+
   results.innerHTML = '';
   players.forEach((p, i) => {
     const row = document.createElement('div');
-    row.className = 'result-row';
+    const winner = i === 0 && p.score > 0;
+    row.className = 'result-row' + (winner ? ' result-winner' : '');
+
+    // Mini canvas character preview with hat
+    const cvs = document.createElement('canvas');
+    cvs.width = 50;
+    cvs.height = 65;
+    cvs.className = 'result-preview';
+    const pvCtx = cvs.getContext('2d');
+    drawHatPreview(pvCtx, p.hat || 'cap', 50, 65);
+
     const coinsText = p.coinsEarned ? ` (+${p.coinsEarned} coins)` : '';
     row.innerHTML = `
       <span class="result-rank">#${i + 1}</span>
-      <span class="result-dot" style="background: ${esc(p.color)}"></span>
-      <span class="result-name">${esc(p.name)}${p.playerId === myPlayerId ? ' (you)' : ''}</span>
-      <span class="result-score">${p.score}${p.playerId === myPlayerId ? coinsText : ''}</span>
     `;
+    row.appendChild(cvs);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'result-name';
+    nameSpan.textContent = p.name + (p.playerId === myPlayerId ? ' (you)' : '');
+    row.appendChild(nameSpan);
+
+    const scoreSpan = document.createElement('span');
+    scoreSpan.className = 'result-score';
+    scoreSpan.textContent = p.score + (p.playerId === myPlayerId ? coinsText : '');
+    row.appendChild(scoreSpan);
+
     results.appendChild(row);
   });
   // Refresh profile to pick up new coin balance
@@ -523,18 +576,20 @@ bgCanvas.height = CANVAS_HEIGHT;
 
   // City skyline silhouette
   bg.fillStyle = '#1a1a3e';
+  // Rescaled x-positions by 1.2 (960/800) + added buildings to fill wider canvas
   const buildings = [
-    { x: 20, w: 60, h: 120 },
-    { x: 90, w: 45, h: 180 },
-    { x: 145, w: 70, h: 100 },
-    { x: 230, w: 40, h: 200 },
-    { x: 280, w: 80, h: 140 },
-    { x: 380, w: 50, h: 170 },
-    { x: 440, w: 65, h: 110 },
-    { x: 520, w: 45, h: 190 },
-    { x: 575, w: 75, h: 130 },
-    { x: 670, w: 55, h: 160 },
-    { x: 735, w: 60, h: 140 },
+    { x: 24, w: 60, h: 120 },
+    { x: 108, w: 45, h: 180 },
+    { x: 174, w: 70, h: 100 },
+    { x: 276, w: 40, h: 200 },
+    { x: 336, w: 80, h: 140 },
+    { x: 456, w: 50, h: 170 },
+    { x: 528, w: 65, h: 110 },
+    { x: 624, w: 45, h: 190 },
+    { x: 690, w: 75, h: 130 },
+    { x: 804, w: 55, h: 160 },
+    { x: 882, w: 60, h: 140 },
+    { x: 770, w: 30, h: 105 },
   ];
   for (const b of buildings) {
     bg.fillRect(b.x, GROUND_Y - b.h, b.w, b.h);

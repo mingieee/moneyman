@@ -22,6 +22,7 @@
     <div id="name-screen" class="screen hidden">
       <h1>MoneyMan</h1>
       <p>Multiplayer Coin Collector</p>
+      <canvas id="name-hat-preview" width="80" height="100"></canvas>
       <label for="name-input" class="hint">Choose your name (8 chars max)</label>
       <input type="text" id="name-input" maxlength="8" placeholder="Player" autocomplete="off" spellcheck="false">
       <button id="join-btn">Join Game</button>
@@ -33,6 +34,7 @@
       <h1>MoneyMan</h1>
       <p>Multiplayer Coin Collector</p>
       <div id="lobby-players"></div>
+      <div id="lobby-player-count" class="hint"></div>
       <p id="lobby-timer" class="hint"></p>
       <p class="hint">Waiting for players... game starts when full or idle timer expires</p>
     </div>
@@ -45,7 +47,7 @@
 
     <!-- Game over screen -->
     <div id="gameover-screen" class="screen hidden">
-      <h1>Game Over!</h1>
+      <h1 id="gameover-title">Game Over!</h1>
       <div id="results"></div>
       <button id="play-again-btn">Play Again</button>
     </div>

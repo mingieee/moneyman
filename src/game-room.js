@@ -15,8 +15,8 @@ import { HAT_CATALOG } from './hat-catalog.js';
 import { isValidUUID, awardCoins } from './db.js';
 
 // --- Game constants (must match client for rendering) ---
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
+const CANVAS_WIDTH = 960;
+const CANVAS_HEIGHT = 540;
 const GROUND_Y = CANVAS_HEIGHT - 40;
 const PLAYER_WIDTH = 60;
 const PLAYER_HEIGHT = 70;
@@ -33,8 +33,8 @@ const LOBBY_IDLE_TIMEOUT = 20;
 const MAX_PLAYERS = 5;
 
 // --- Coin spawning ---
-const COIN_BASE_SPEED = 100;
-const COIN_SPEED_VARIATION = 80;  // Wide range: 100-180 px/sec
+const COIN_BASE_SPEED = 89;       // Scaled from 100 by 500/560 for 540px canvas
+const COIN_SPEED_VARIATION = 71;  // Scaled from 80 — keeps identical fall time
 const COIN_SPAWN_INTERVAL = 0.5;  // Spawn a coin every 0.5 seconds (double rate)
 
 // --- Collision ---
