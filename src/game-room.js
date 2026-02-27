@@ -60,6 +60,13 @@ function sanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9 _-]/g, '').trim().slice(0, 8);
 }
 
+// Escape a string for safe embedding in manually-built JSON.
+// Defense-in-depth: sanitizeName restricts to [a-zA-Z0-9 _-] which has no
+// dangerous chars, but this protects against future sanitization changes.
+function jsonEscape(str) {
+  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export class GameRoom {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -549,23 +556,29 @@ export class GameRoom {
       if (index >= MAX_PLAYERS) break;
     }
 
+    // Promote waiting room players to active players (up to MAX_PLAYERS).
+    // Excess waiting players stay in the waiting room for the next round.
+    const remainingWaiters = new Map();
     for (const [id, w] of this.waitingRoom) {
-      if (index >= MAX_PLAYERS) break;
-      allPlayers.set(id, {
-        ws: w.ws,
-        x: CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2,
-        score: 0,
-        color: PLAYER_COLORS[index % PLAYER_COLORS.length],
-        name: w.name,
-        hat: w.hat || 'cap',
-        userId: w.userId || null,
-        connected: true,
-      });
-      index++;
+      if (index < MAX_PLAYERS) {
+        allPlayers.set(id, {
+          ws: w.ws,
+          x: CANVAS_WIDTH / 2 - PLAYER_WIDTH / 2,
+          score: 0,
+          color: PLAYER_COLORS[index % PLAYER_COLORS.length],
+          name: w.name,
+          hat: w.hat || 'cap',
+          userId: w.userId || null,
+          connected: true,
+        });
+        index++;
+      } else {
+        remainingWaiters.set(id, w);
+      }
     }
 
     this.players = allPlayers;
-    this.waitingRoom = new Map();
+    this.waitingRoom = remainingWaiters;
 
     this._broadcastLobbyMsg();
 
@@ -598,7 +611,7 @@ export class GameRoom {
       first = false;
       json += '{"playerId":"' + id + '","x":' + Math.round(p.x) +
               ',"score":' + p.score + ',"color":"' + p.color +
-              '","name":"' + p.name + '","hat":"' + (p.hat || 'cap') + '"}';
+              '","name":"' + jsonEscape(p.name) + '","hat":"' + (p.hat || 'cap') + '"}';
     }
     json += '],"coins":[';
     first = true;

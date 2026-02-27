@@ -59,20 +59,29 @@ export async function buyHat(db, userId, hatId) {
     return { error: `Achievement required: ${hat.achievement.label}`, status: 403 };
   }
 
-  // Check coin balance
+  // Check coin balance (early rejection for better UX — real enforcement is atomic below)
   if (user.coins_balance < hat.cost) {
     return { error: 'Not enough coins', status: 403 };
   }
 
-  // Deduct coins and grant hat
-  await db.batch([
+  // Atomic deduction: WHERE clause ensures balance can't go negative even under
+  // concurrent requests (prevents TOCTOU double-spend). The INSERT uses
+  // INSERT OR IGNORE to handle the race where two requests both pass the
+  // ownership check — the second INSERT silently no-ops.
+  const results = await db.batch([
     db.prepare(
-      `UPDATE users SET coins_balance = coins_balance - ?, updated_at = datetime('now') WHERE user_id = ?`
-    ).bind(hat.cost, userId),
+      `UPDATE users SET coins_balance = coins_balance - ?, updated_at = datetime('now')
+       WHERE user_id = ? AND coins_balance >= ?`
+    ).bind(hat.cost, userId, hat.cost),
     db.prepare(
-      'INSERT INTO user_hats (user_id, hat_id) VALUES (?, ?)'
+      'INSERT OR IGNORE INTO user_hats (user_id, hat_id) VALUES (?, ?)'
     ).bind(userId, hatId),
   ]);
+
+  // Check if the UPDATE actually affected a row (balance was sufficient)
+  if (results[0].meta.changes === 0) {
+    return { error: 'Not enough coins', status: 403 };
+  }
 
   return getOrCreateUser(db, userId);
 }
